@@ -212,9 +212,9 @@ fn is_valid_reference_context(prev: Option<char>, next: Option<char>) -> bool {
     prev_ok && next_ok
 }
 
-fn replace_schema_refs(schema: String, target: &str, replacement_name: &str) -> String {
+fn replace_schema_refs(schema: String, target: &str, replacement_name: &str) -> (String, bool) {
     if !schema.contains(target) {
-        return schema;
+        return (schema, false);
     }
 
     let source = schema;
@@ -248,9 +248,9 @@ fn replace_schema_refs(schema: String, target: &str, replacement_name: &str) -> 
     }
 
     if replaced {
-        result
+        (result, true)
     } else {
-        source
+        (source, false)
     }
 }
 
@@ -309,19 +309,27 @@ impl ZodGenerator {
         let entries: Vec<(String, String)> = self.schemas.clone();
         let originals = entries.clone();
 
-        let processed: Vec<(String, String)> = entries
-            .into_iter()
-            .map(|(name, schema)| {
-                let mut updated = schema;
-                for (dep_name, dep_schema) in &originals {
-                    if dep_name == &name {
-                        continue;
-                    }
-                    updated = replace_schema_refs(updated, dep_schema, dep_name);
+        let mut processed: Vec<(String, String)> = Vec::with_capacity(entries.len());
+        let mut dependency_map: HashMap<String, Vec<String>> = HashMap::new();
+
+        for (name, schema) in entries.into_iter() {
+            let mut updated = schema;
+            let mut deps = Vec::new();
+
+            for (dep_name, dep_schema) in &originals {
+                if dep_name == &name {
+                    continue;
                 }
-                (name, updated)
-            })
-            .collect();
+                let (new_schema, replaced) = replace_schema_refs(updated, dep_schema, dep_name);
+                if replaced {
+                    deps.push(dep_name.clone());
+                }
+                updated = new_schema;
+            }
+
+            dependency_map.insert(name.clone(), deps);
+            processed.push((name, updated));
+        }
 
         let mut schema_map: HashMap<String, String> = processed.iter().cloned().collect();
         let total = schema_map.len();
@@ -336,19 +344,10 @@ impl ZodGenerator {
             names.iter().map(|name| (name.clone(), 0_usize)).collect();
         let mut adjacency: HashMap<String, Vec<String>> = HashMap::new();
 
-        for name in &names {
-            let schema = schema_map
-                .get(name)
-                .expect("schema should exist while building dependency graph");
-            for dep in &names {
-                if dep == name {
-                    continue;
-                }
-                let needle = format!("{dep}Schema");
-                if schema.contains(&needle) {
-                    adjacency.entry(dep.clone()).or_default().push(name.clone());
-                    *indegree.entry(name.clone()).or_default() += 1;
-                }
+        for (name, deps) in &dependency_map {
+            for dep in deps {
+                adjacency.entry(dep.clone()).or_default().push(name.clone());
+                *indegree.entry(name.clone()).or_default() += 1;
             }
         }
 
@@ -664,5 +663,59 @@ mod tests {
             body_idx < star_idx,
             "BodySchema should be declared before StarSystemSchema"
         );
+    }
+
+    #[test]
+    fn test_generator_handles_dependency_added_after_parent() {
+        let mut gen = ZodGenerator::new();
+        gen.add_schema::<StarSystemExample>("StarSystem");
+        gen.add_schema::<BodyExample>("Body");
+
+        let output = gen.generate();
+        let star_idx = output
+            .find("export const StarSystemSchema")
+            .expect("StarSystemSchema should be present");
+        let body_idx = output
+            .find("export const BodySchema")
+            .expect("BodySchema should be present");
+        assert!(
+            body_idx < star_idx,
+            "BodySchema should be declared before StarSystemSchema even when added later"
+        );
+        assert!(output.contains("bodies: z.array(BodySchema)"));
+    }
+
+    #[derive(ZodSchema)]
+    #[allow(dead_code)]
+    struct AlphaSchema {
+        value: String,
+    }
+
+    #[derive(ZodSchema)]
+    #[allow(dead_code)]
+    struct BetaSchema {
+        flag: bool,
+    }
+
+    #[derive(ZodSchema)]
+    #[allow(dead_code)]
+    struct GammaSchema {
+        data: i32,
+    }
+
+    #[test]
+    fn test_generator_preserves_insertion_order_for_independent_schemas() {
+        let mut gen = ZodGenerator::new();
+        gen.add_schema::<AlphaSchema>("Alpha");
+        gen.add_schema::<BetaSchema>("Beta");
+        gen.add_schema::<GammaSchema>("Gamma");
+
+        let output = gen.generate();
+        let alpha_idx = output.find("export const AlphaSchema").unwrap();
+        let beta_idx = output.find("export const BetaSchema").unwrap();
+        let gamma_idx = output.find("export const GammaSchema").unwrap();
+
+        assert!(alpha_idx < beta_idx);
+        assert!(beta_idx < gamma_idx);
     }
 }
