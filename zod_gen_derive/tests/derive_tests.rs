@@ -42,3 +42,16 @@ fn test_struct_rename() {
     let schema = TestStructWithRename::zod_schema();
     assert!(schema.contains("FOOBAR: z.string()"));
 }
+
+#[derive(ZodSchema, Serialize)]
+#[allow(dead_code)]
+struct TestStructWithSpecialRename {
+    #[serde(rename = "$semicolon_field;")]
+    value: String,
+}
+
+#[test]
+fn test_struct_special_rename() {
+    let schema = TestStructWithSpecialRename::zod_schema();
+    assert!(schema.contains("\"$semicolon_field;\": z.string()"));
+}

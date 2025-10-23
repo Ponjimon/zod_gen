@@ -13,6 +13,8 @@ struct User {
     name: String,
     status: UserStatus,
     priority: Priority,
+    #[serde(rename = "$semicolon_field;")]
+    semicolon_field: String,
 }
 
 #[derive(ZodSchema, Debug, Clone, Serialize, Deserialize)]
@@ -69,6 +71,10 @@ fn main() {
     assert!(
         user_schema.contains("user_name"),
         "Schema should contain user_name"
+    );
+    assert!(
+        user_schema.contains("\"$semicolon_field;\""),
+        "Schema should contain $semicolon_field;"
     );
     println!("✅ User correctly uses serde rename values");
     println!();

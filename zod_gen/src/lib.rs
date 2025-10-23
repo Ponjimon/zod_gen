@@ -86,7 +86,7 @@
 //! serde = { version = "1.0", features = ["derive"] }
 //! ```
 
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt::Write};
 
 /// Trait for Rust types that can produce a Zod schema
 pub trait ZodSchema {
@@ -118,15 +118,82 @@ pub fn zod_record(value: &str) -> String {
     format!("z.record(z.string(), {value})")
 }
 
+fn is_ts_identifier_start(ch: char) -> bool {
+    ch == '_' || ch == '$' || ch.is_ascii_alphabetic()
+}
+
+fn is_ts_identifier_part(ch: char) -> bool {
+    ch == '_' || ch == '$' || ch.is_ascii_alphanumeric()
+}
+
+fn is_valid_ts_identifier(name: &str) -> bool {
+    let mut chars = name.chars();
+    match chars.next() {
+        Some(ch) if is_ts_identifier_start(ch) => {
+            for ch in chars {
+                if !is_ts_identifier_part(ch) {
+                    return false;
+                }
+            }
+            true
+        }
+        _ => false,
+    }
+}
+
+fn ts_quoted_literal(value: &str, quote: char) -> String {
+    let mut escaped = String::with_capacity(value.len() + 2);
+    escaped.push(quote);
+    for ch in value.chars() {
+        match ch {
+            '"' if quote == '"' => escaped.push_str("\\\""),
+            '\'' if quote == '\'' => escaped.push_str("\\'"),
+            '\\' => escaped.push_str("\\\\"),
+            '\n' => escaped.push_str("\\n"),
+            '\r' => escaped.push_str("\\r"),
+            '\t' => escaped.push_str("\\t"),
+            '\u{08}' => escaped.push_str("\\b"),
+            '\u{0C}' => escaped.push_str("\\f"),
+            '\u{2028}' => escaped.push_str("\\u2028"),
+            '\u{2029}' => escaped.push_str("\\u2029"),
+            ch if ch.is_control() => {
+                let _ = write!(escaped, "\\u{:04X}", ch as u32);
+            }
+            _ => escaped.push(ch),
+        }
+    }
+    escaped.push(quote);
+    escaped
+}
+
+fn ts_double_quoted_literal(value: &str) -> String {
+    ts_quoted_literal(value, '"')
+}
+
+fn ts_single_quoted_literal(value: &str) -> String {
+    ts_quoted_literal(value, '\'')
+}
+
+fn format_ts_property_key(name: &str) -> String {
+    if is_valid_ts_identifier(name) {
+        name.to_string()
+    } else {
+        ts_double_quoted_literal(name)
+    }
+}
+
 pub fn zod_object(fields: &[(&str, &str)]) -> String {
-    let items: Vec<String> = fields.iter().map(|(k, v)| format!("  {k}: {v}")).collect();
+    let items: Vec<String> = fields
+        .iter()
+        .map(|(k, v)| format!("  {}: {v}", format_ts_property_key(k)))
+        .collect();
     format!("z.object({{\n{}\n}})", items.join(",\n"))
 }
 
 pub fn zod_enum(variants: &[&str]) -> String {
     let lits: Vec<String> = variants
         .iter()
-        .map(|v| format!("z.literal('{v}')"))
+        .map(|v| format!("z.literal({})", ts_single_quoted_literal(v)))
         .collect();
     format!("z.union([{}])", lits.join(", "))
 }
@@ -313,5 +380,19 @@ mod tests {
             <HashMap<String, Vec<String>>>::zod_schema(),
             "z.record(z.string(), z.array(z.string()))"
         );
+    }
+
+    #[test]
+    fn test_zod_object_quotes_invalid_property_name() {
+        let schema = zod_object(&[("$semicolon_field;", zod_string())]);
+        assert!(schema.contains("\"$semicolon_field;\": z.string()"));
+    }
+
+    #[test]
+    fn test_zod_enum_handles_special_characters() {
+        let schema = zod_enum(&["value-with-hyphen", "$value", "simple"]);
+        assert!(schema.contains("z.literal('value-with-hyphen')"));
+        assert!(schema.contains("z.literal('$value')"));
+        assert!(schema.contains("z.literal('simple')"));
     }
 }
