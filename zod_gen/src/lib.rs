@@ -87,7 +87,7 @@
 //! ```
 
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeSet, HashMap},
     fmt::Write,
 };
 
@@ -323,48 +323,62 @@ impl ZodGenerator {
             })
             .collect();
 
-        let total = processed.len();
-        let mut remaining: BTreeMap<String, String> = processed.into_iter().collect();
+        let mut schema_map: HashMap<String, String> = processed.into_iter().collect();
+        let total = schema_map.len();
+        let names: Vec<String> = schema_map.keys().cloned().collect();
+
+        let mut indegree: HashMap<String, usize> =
+            names.iter().map(|name| (name.clone(), 0_usize)).collect();
+        let mut adjacency: HashMap<String, Vec<String>> = HashMap::new();
+
+        for name in &names {
+            let schema = schema_map
+                .get(name)
+                .expect("schema should exist while building dependency graph");
+            for dep in &names {
+                if dep == name {
+                    continue;
+                }
+                let needle = format!("{dep}Schema");
+                if schema.contains(&needle) {
+                    adjacency.entry(dep.clone()).or_default().push(name.clone());
+                    *indegree.entry(name.clone()).or_default() += 1;
+                }
+            }
+        }
+
+        let mut ready: BTreeSet<String> = indegree
+            .iter()
+            .filter_map(|(name, &deg)| if deg == 0 { Some(name.clone()) } else { None })
+            .collect();
         let mut ordered = Vec::with_capacity(total);
 
-        while !remaining.is_empty() {
-            let keys: Vec<String> = remaining.keys().cloned().collect();
-            let mut to_remove = Vec::new();
+        while let Some(name) = ready.iter().next().cloned() {
+            ready.remove(&name);
+            if let Some(schema) = schema_map.remove(&name) {
+                ordered.push((name.clone(), schema));
+            }
 
-            for name in &keys {
-                let schema = remaining.get(name).expect("schema should exist");
-                let mut depends_on_remaining = false;
-
-                for dep in &keys {
-                    if dep == name {
-                        continue;
+            if let Some(children) = adjacency.remove(&name) {
+                for child in children {
+                    if let Some(deg) = indegree.get_mut(&child) {
+                        if *deg > 0 {
+                            *deg -= 1;
+                            if *deg == 0 {
+                                ready.insert(child.clone());
+                            }
+                        }
                     }
-                    let needle = format!("{dep}Schema");
-                    if schema.contains(&needle) {
-                        depends_on_remaining = true;
-                        break;
-                    }
-                }
-
-                if !depends_on_remaining {
-                    to_remove.push(name.clone());
                 }
             }
 
-            if to_remove.is_empty() {
-                if let Some((name, schema)) =
-                    remaining.iter().next().map(|(n, s)| (n.clone(), s.clone()))
-                {
-                    remaining.remove(&name);
-                    ordered.push((name, schema));
-                }
-            } else {
-                for name in to_remove {
-                    if let Some(schema) = remaining.remove(&name) {
-                        ordered.push((name, schema));
-                    }
-                }
-            }
+            indegree.remove(&name);
+        }
+
+        if !schema_map.is_empty() {
+            let mut remaining: Vec<(String, String)> = schema_map.into_iter().collect();
+            remaining.sort_by(|a, b| a.0.cmp(&b.0));
+            ordered.extend(remaining);
         }
 
         let mut output =
