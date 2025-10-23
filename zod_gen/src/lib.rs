@@ -213,38 +213,65 @@ fn is_valid_reference_context(prev: Option<char>, next: Option<char>) -> bool {
 }
 
 fn replace_schema_refs(schema: String, target: &str, replacement_name: &str) -> (String, bool) {
-    if !schema.contains(target) {
+    if target.is_empty() {
         return (schema, false);
     }
 
-    let source = schema;
-    let mut result = String::with_capacity(source.len());
     let replacement = format!("{replacement_name}Schema");
-    let mut replaced = false;
+    let source = schema;
 
+    let target_variants = build_target_variants(target, source.as_str());
+    if target_variants
+        .iter()
+        .all(|variant| !source.as_str().contains(variant))
     {
-        let bytes = source.as_str();
-        let mut last = 0;
+        return (source, false);
+    }
 
-        while let Some(pos) = bytes[last..].find(target) {
-            let start = last + pos;
-            let end = start + target.len();
+    let mut result = String::with_capacity(source.len());
+    let mut last = 0usize;
+    let mut replaced = false;
+    let bytes = source.as_str();
 
-            let prev = prev_non_whitespace(bytes, start);
-            let next = next_non_whitespace(bytes, end);
+    while last < bytes.len() {
+        let mut next_match: Option<(usize, &String)> = None;
 
-            if is_valid_reference_context(prev, next) {
-                result.push_str(&bytes[last..start]);
-                result.push_str(&replacement);
-                last = end;
-                replaced = true;
-            } else {
-                result.push_str(&bytes[last..start + 1]);
-                last = start + 1;
+        for variant in &target_variants {
+            if let Some(rel_pos) = bytes[last..].find(variant) {
+                let abs_pos = last + rel_pos;
+                let update = match next_match {
+                    Some((current_pos, _)) => abs_pos < current_pos,
+                    None => true,
+                };
+                if update {
+                    next_match = Some((abs_pos, variant));
+                }
             }
         }
 
-        result.push_str(&bytes[last..]);
+        let Some((start, variant)) = next_match else {
+            result.push_str(&bytes[last..]);
+            break;
+        };
+
+        let end = start + variant.len();
+        let prev = prev_non_whitespace(bytes, start);
+        let next = next_non_whitespace(bytes, end);
+
+        if is_valid_reference_context(prev, next) {
+            result.push_str(&bytes[last..start]);
+            result.push_str(&replacement);
+            last = end;
+            replaced = true;
+        } else {
+            let char_len = bytes[start..]
+                .chars()
+                .next()
+                .map(|ch| ch.len_utf8())
+                .unwrap_or(1);
+            result.push_str(&bytes[last..start + char_len]);
+            last = start + char_len;
+        }
     }
 
     if replaced {
@@ -252,6 +279,66 @@ fn replace_schema_refs(schema: String, target: &str, replacement_name: &str) -> 
     } else {
         (source, false)
     }
+}
+
+fn build_target_variants(target: &str, search_space: &str) -> Vec<String> {
+    use std::collections::HashSet;
+
+    let mut variants = Vec::new();
+    variants.push(target.to_string());
+
+    let mut indents: HashSet<String> = HashSet::new();
+    if let Some(first_non_ws) = target.chars().find(|c| !c.is_whitespace()) {
+        let mut offset = 0usize;
+        while let Some(rel_pos) = search_space[offset..].find(first_non_ws) {
+            let idx = offset + rel_pos;
+            let line_start = search_space[..idx]
+                .rfind('\n')
+                .map(|pos| pos + 1)
+                .unwrap_or(0);
+            if line_start < idx {
+                let indent_candidate = &search_space[line_start..idx];
+                if !indent_candidate.is_empty()
+                    && indent_candidate.chars().all(|ch| ch == ' ' || ch == '\t')
+                {
+                    indents.insert(indent_candidate.to_string());
+                }
+            }
+            offset = idx + first_non_ws.len_utf8();
+        }
+    }
+
+    for indent in indents {
+        let variant = indent_schema_lines(target, &indent);
+        if !variant.is_empty() && variant != target {
+            variants.push(variant);
+        }
+    }
+
+    variants
+}
+
+fn indent_schema_lines(schema: &str, indent: &str) -> String {
+    if indent.is_empty() {
+        return schema.to_string();
+    }
+
+    let mut result = String::with_capacity(schema.len() + indent.len() * schema.lines().count());
+    let mut lines = schema.split('\n');
+
+    if let Some(first) = lines.next() {
+        result.push_str(first);
+    }
+
+    for line in lines {
+        result.push('\n');
+        if !line.is_empty() {
+            result.push_str(indent);
+        }
+        result.push_str(line);
+    }
+
+    result
 }
 
 pub fn zod_object(fields: &[(&str, &str)]) -> String {
@@ -314,6 +401,7 @@ impl ZodGenerator {
         }
 
         let mut processed: Vec<(String, String)> = Vec::with_capacity(entries.len());
+        let mut processed_map: HashMap<String, String> = HashMap::new();
         let mut dependency_map: HashMap<String, Vec<String>> = HashMap::new();
 
         for (name, schema) in entries.into_iter() {
@@ -332,7 +420,12 @@ impl ZodGenerator {
                 {
                     continue;
                 }
-                let (new_schema, replaced) = replace_schema_refs(updated, dep_schema, dep_name);
+                let candidate_schema = processed_map
+                    .get(dep_name)
+                    .map(|value| value.as_str())
+                    .unwrap_or(dep_schema.as_str());
+                let (new_schema, replaced) =
+                    replace_schema_refs(updated, candidate_schema, dep_name);
                 if replaced {
                     deps.push(dep_name.clone());
                 }
@@ -340,6 +433,7 @@ impl ZodGenerator {
             }
 
             dependency_map.insert(name.clone(), deps);
+            processed_map.insert(name.clone(), updated.clone());
             processed.push((name, updated));
         }
 
@@ -775,6 +869,67 @@ mod tests {
         assert!(output.contains("child: z.object({"));
         assert!(!output.contains("child: SameShapeASchema"));
         assert!(!output.contains("child: SameShapeBSchema"));
+    }
+
+    #[derive(ZodSchema, Default, Serialize, Deserialize)]
+    #[allow(dead_code)]
+    #[serde(default, rename_all = "camelCase")]
+    struct DomainLandingPads {
+        large: i32,
+        medium: i32,
+        small: i32,
+    }
+
+    #[derive(ZodSchema, Default, Serialize, Deserialize)]
+    #[allow(dead_code)]
+    #[serde(default, rename_all = "camelCase")]
+    struct DomainMarket {
+        commodities: Vec<String>,
+        update_time: String,
+    }
+
+    #[derive(ZodSchema, Default, Serialize, Deserialize)]
+    #[allow(dead_code)]
+    #[serde(default, rename_all = "camelCase")]
+    struct DomainStation {
+        name: String,
+        #[serde(rename = "type")]
+        station_type: Option<String>,
+        landing_pads: Option<DomainLandingPads>,
+        market: Option<DomainMarket>,
+    }
+
+    #[derive(ZodSchema, Default, Serialize, Deserialize)]
+    #[allow(dead_code)]
+    #[serde(default, rename_all = "camelCase")]
+    struct DomainBody {
+        name: String,
+        stations: Vec<DomainStation>,
+        update_time: String,
+    }
+
+    #[derive(ZodSchema, Default, Serialize, Deserialize)]
+    #[allow(dead_code)]
+    #[serde(default, rename_all = "camelCase")]
+    struct DomainStarSystem {
+        bodies: Vec<DomainBody>,
+        stations: Vec<DomainStation>,
+    }
+
+    #[test]
+    fn test_generator_handles_complex_domain_structures_without_inlining() {
+        let mut gen = ZodGenerator::new();
+        gen.add_schema::<DomainLandingPads>("DomainLandingPads");
+        gen.add_schema::<DomainMarket>("DomainMarket");
+        gen.add_schema::<DomainStation>("DomainStation");
+        gen.add_schema::<DomainBody>("DomainBody");
+        gen.add_schema::<DomainStarSystem>("DomainStarSystem");
+
+        let output = gen.generate();
+        assert!(output.contains("landing_pads: DomainLandingPadsSchema.nullable()"));
+        assert!(output.contains("market: DomainMarketSchema.nullable()"));
+        assert!(output.contains("stations: z.array(DomainStationSchema)"));
+        assert!(output.contains("bodies: z.array(DomainBodySchema)"));
     }
 
     #[test]
