@@ -410,6 +410,7 @@ impl ZodSchema for serde_json::Value {
 mod tests {
     use super::*;
     use crate as zod_gen;
+    use serde::{Deserialize, Serialize};
     use zod_gen_derive::ZodSchema;
 
     #[test]
@@ -547,5 +548,34 @@ mod tests {
         assert!(output.contains("status: StatusModelSchema"));
         assert!(output.contains("optional_status: StatusModelSchema.nullable()"));
         assert!(!output.contains("status: z.union(["));
+    }
+
+    #[derive(ZodSchema, Default, Serialize, Deserialize)]
+    #[allow(dead_code)]
+    #[serde(rename_all = "camelCase")]
+    struct BodyExample {
+        #[serde(rename = "id64", alias = "id")]
+        id: i64,
+    }
+
+    #[derive(ZodSchema, Default, Serialize, Deserialize)]
+    #[allow(dead_code)]
+    #[serde(rename_all = "camelCase")]
+    struct StarSystemExample {
+        #[serde(rename = "id64", alias = "id")]
+        id: i64,
+        bodies: Vec<BodyExample>,
+    }
+
+    #[test]
+    fn test_generator_handles_vec_of_nested_structs() {
+        let mut gen = ZodGenerator::new();
+        gen.add_schema::<BodyExample>("Body");
+        gen.add_schema::<StarSystemExample>("StarSystem");
+
+        let output = gen.generate();
+        assert!(output.contains("export const BodySchema ="));
+        assert!(output.contains("export const StarSystemSchema ="));
+        assert!(output.contains("bodies: z.array(BodySchema)"));
     }
 }
