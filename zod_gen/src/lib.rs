@@ -87,7 +87,8 @@
 //! ```
 
 use std::{
-    collections::{BTreeSet, HashMap},
+    cmp::Reverse,
+    collections::{BinaryHeap, HashMap},
     fmt::Write,
 };
 
@@ -274,7 +275,7 @@ pub fn zod_enum(variants: &[&str]) -> String {
 /// The `ZodGenerator` generates Zod schemas with proper serde rename support
 /// from Rust types, providing TypeScript type safety.
 pub struct ZodGenerator {
-    schemas: HashMap<String, String>,
+    schemas: Vec<(String, String)>,
 }
 
 impl Default for ZodGenerator {
@@ -286,27 +287,26 @@ impl Default for ZodGenerator {
 impl ZodGenerator {
     pub fn new() -> Self {
         Self {
-            schemas: HashMap::new(),
+            schemas: Vec::new(),
         }
     }
 
     /// Add a Zod schema for a Rust type
     pub fn add_schema<T: ZodSchema>(&mut self, name: &str) {
         let schema = T::zod_schema();
-        self.schemas.insert(name.to_string(), schema);
+        let name = name.to_string();
+        if let Some(existing) = self.schemas.iter_mut().find(|(n, _)| *n == name) {
+            existing.1 = schema;
+        } else {
+            self.schemas.push((name, schema));
+        }
     }
 
     /// Generate Zod schemas file
     ///
     /// Creates a TypeScript file with Zod schemas and inferred types.
     pub fn generate(&self) -> String {
-        let mut entries: Vec<(String, String)> = self
-            .schemas
-            .iter()
-            .map(|(name, schema)| (name.clone(), schema.clone()))
-            .collect();
-
-        entries.sort_by(|a, b| a.0.cmp(&b.0));
+        let entries: Vec<(String, String)> = self.schemas.clone();
         let originals = entries.clone();
 
         let processed: Vec<(String, String)> = entries
@@ -323,9 +323,14 @@ impl ZodGenerator {
             })
             .collect();
 
-        let mut schema_map: HashMap<String, String> = processed.into_iter().collect();
+        let mut schema_map: HashMap<String, String> = processed.iter().cloned().collect();
         let total = schema_map.len();
-        let names: Vec<String> = schema_map.keys().cloned().collect();
+        let names: Vec<String> = processed.iter().map(|(name, _)| name.clone()).collect();
+        let order_index: HashMap<String, usize> = names
+            .iter()
+            .enumerate()
+            .map(|(idx, name)| (name.clone(), idx))
+            .collect();
 
         let mut indegree: HashMap<String, usize> =
             names.iter().map(|name| (name.clone(), 0_usize)).collect();
@@ -347,14 +352,16 @@ impl ZodGenerator {
             }
         }
 
-        let mut ready: BTreeSet<String> = indegree
-            .iter()
-            .filter_map(|(name, &deg)| if deg == 0 { Some(name.clone()) } else { None })
-            .collect();
+        let mut ready: BinaryHeap<Reverse<(usize, String)>> = BinaryHeap::new();
+        for (name, &deg) in &indegree {
+            if deg == 0 {
+                let idx = *order_index.get(name).unwrap_or(&usize::MAX);
+                ready.push(Reverse((idx, name.clone())));
+            }
+        }
         let mut ordered = Vec::with_capacity(total);
 
-        while let Some(name) = ready.iter().next().cloned() {
-            ready.remove(&name);
+        while let Some(Reverse((_, name))) = ready.pop() {
             if let Some(schema) = schema_map.remove(&name) {
                 ordered.push((name.clone(), schema));
             }
@@ -365,7 +372,8 @@ impl ZodGenerator {
                         if *deg > 0 {
                             *deg -= 1;
                             if *deg == 0 {
-                                ready.insert(child.clone());
+                                let idx = *order_index.get(&child).unwrap_or(&usize::MAX);
+                                ready.push(Reverse((idx, child.clone())));
                             }
                         }
                     }
@@ -376,9 +384,17 @@ impl ZodGenerator {
         }
 
         if !schema_map.is_empty() {
-            let mut remaining: Vec<(String, String)> = schema_map.into_iter().collect();
-            remaining.sort_by(|a, b| a.0.cmp(&b.0));
-            ordered.extend(remaining);
+            let mut remaining: Vec<(usize, (String, String))> = schema_map
+                .into_iter()
+                .map(|(name, schema)| {
+                    let idx = *order_index.get(&name).unwrap_or(&usize::MAX);
+                    (idx, (name, schema))
+                })
+                .collect();
+            remaining.sort_by_key(|(idx, _)| *idx);
+            for (_, pair) in remaining {
+                ordered.push(pair);
+            }
         }
 
         let mut output =
