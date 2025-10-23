@@ -308,6 +308,10 @@ impl ZodGenerator {
     pub fn generate(&self) -> String {
         let entries: Vec<(String, String)> = self.schemas.clone();
         let originals = entries.clone();
+        let mut schema_occurrences: HashMap<String, usize> = HashMap::new();
+        for (_, schema) in &originals {
+            *schema_occurrences.entry(schema.clone()).or_insert(0) += 1;
+        }
 
         let mut processed: Vec<(String, String)> = Vec::with_capacity(entries.len());
         let mut dependency_map: HashMap<String, Vec<String>> = HashMap::new();
@@ -318,6 +322,14 @@ impl ZodGenerator {
 
             for (dep_name, dep_schema) in &originals {
                 if dep_name == &name {
+                    continue;
+                }
+                if schema_occurrences
+                    .get(dep_schema.as_str())
+                    .copied()
+                    .unwrap_or(0)
+                    > 1
+                {
                     continue;
                 }
                 let (new_schema, replaced) = replace_schema_refs(updated, dep_schema, dep_name);
@@ -665,6 +677,35 @@ mod tests {
         );
     }
 
+    #[derive(ZodSchema, Default, Serialize, Deserialize)]
+    #[allow(dead_code)]
+    #[serde(rename_all = "camelCase")]
+    struct DeepNestedParent {
+        #[serde(rename = "id64", alias = "id")]
+        id: i64,
+        child_matrix: Option<Vec<Vec<NestedChild>>>,
+    }
+
+    #[test]
+    fn test_generator_handles_deeply_nested_structs() {
+        let mut gen = ZodGenerator::new();
+        gen.add_schema::<NestedChild>("NestedChild");
+        gen.add_schema::<DeepNestedParent>("DeepNestedParent");
+
+        let output = gen.generate();
+        assert!(output.contains("child_matrix: z.array(z.array(NestedChildSchema)).nullable()"));
+        let child_idx = output
+            .find("export const NestedChildSchema")
+            .expect("NestedChildSchema should be present");
+        let parent_idx = output
+            .find("export const DeepNestedParentSchema")
+            .expect("DeepNestedParentSchema should be present");
+        assert!(
+            child_idx < parent_idx,
+            "NestedChildSchema should be declared before DeepNestedParentSchema"
+        );
+    }
+
     #[test]
     fn test_generator_handles_dependency_added_after_parent() {
         let mut gen = ZodGenerator::new();
@@ -701,6 +742,39 @@ mod tests {
     #[allow(dead_code)]
     struct SchemaBaz {
         data: i32,
+    }
+
+    #[derive(ZodSchema, Serialize, Deserialize)]
+    #[allow(dead_code)]
+    struct SameShapeA {
+        value: bool,
+    }
+
+    #[derive(ZodSchema, Serialize, Deserialize)]
+    #[allow(dead_code)]
+    struct SameShapeB {
+        value: bool,
+    }
+
+    #[derive(ZodSchema, Serialize, Deserialize)]
+    #[allow(dead_code)]
+    struct SameShapeParent {
+        child: SameShapeB,
+    }
+
+    #[test]
+    fn test_generator_prefers_actual_dependency_when_shapes_match() {
+        let mut gen = ZodGenerator::new();
+        gen.add_schema::<SameShapeA>("SameShapeA");
+        gen.add_schema::<SameShapeB>("SameShapeB");
+        gen.add_schema::<SameShapeParent>("SameShapeParent");
+
+        let output = gen.generate();
+        assert!(output.contains("export const SameShapeASchema"));
+        assert!(output.contains("export const SameShapeBSchema"));
+        assert!(output.contains("child: z.object({"));
+        assert!(!output.contains("child: SameShapeASchema"));
+        assert!(!output.contains("child: SameShapeBSchema"));
     }
 
     #[test]
