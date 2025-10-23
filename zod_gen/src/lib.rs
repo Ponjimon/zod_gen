@@ -629,7 +629,7 @@ mod tests {
     #[derive(ZodSchema, Default, Serialize, Deserialize)]
     #[allow(dead_code)]
     #[serde(rename_all = "camelCase")]
-    struct BodyExample {
+    struct NestedChild {
         #[serde(rename = "id64", alias = "id")]
         id: i64,
     }
@@ -637,85 +637,91 @@ mod tests {
     #[derive(ZodSchema, Default, Serialize, Deserialize)]
     #[allow(dead_code)]
     #[serde(rename_all = "camelCase")]
-    struct StarSystemExample {
+    struct NestedParent {
         #[serde(rename = "id64", alias = "id")]
         id: i64,
-        bodies: Vec<BodyExample>,
+        children: Vec<NestedChild>,
     }
 
     #[test]
     fn test_generator_handles_vec_of_nested_structs() {
         let mut gen = ZodGenerator::new();
-        gen.add_schema::<BodyExample>("Body");
-        gen.add_schema::<StarSystemExample>("StarSystem");
+        gen.add_schema::<NestedChild>("NestedChild");
+        gen.add_schema::<NestedParent>("NestedParent");
 
         let output = gen.generate();
-        assert!(output.contains("export const BodySchema ="));
-        assert!(output.contains("export const StarSystemSchema ="));
-        assert!(output.contains("bodies: z.array(BodySchema)"));
-        let body_idx = output
-            .find("export const BodySchema")
-            .expect("BodySchema should be present");
-        let star_idx = output
-            .find("export const StarSystemSchema")
-            .expect("StarSystemSchema should be present");
+        assert!(output.contains("export const NestedChildSchema ="));
+        assert!(output.contains("export const NestedParentSchema ="));
+        assert!(output.contains("children: z.array(NestedChildSchema)"));
+        let child_idx = output
+            .find("export const NestedChildSchema")
+            .expect("NestedChildSchema should be present");
+        let parent_idx = output
+            .find("export const NestedParentSchema")
+            .expect("NestedParentSchema should be present");
         assert!(
-            body_idx < star_idx,
-            "BodySchema should be declared before StarSystemSchema"
+            child_idx < parent_idx,
+            "NestedChildSchema should be declared before NestedParentSchema"
         );
     }
 
     #[test]
     fn test_generator_handles_dependency_added_after_parent() {
         let mut gen = ZodGenerator::new();
-        gen.add_schema::<StarSystemExample>("StarSystem");
-        gen.add_schema::<BodyExample>("Body");
+        gen.add_schema::<NestedParent>("Ancestor");
+        gen.add_schema::<NestedChild>("ZetaChild");
 
         let output = gen.generate();
-        let star_idx = output
-            .find("export const StarSystemSchema")
-            .expect("StarSystemSchema should be present");
-        let body_idx = output
-            .find("export const BodySchema")
-            .expect("BodySchema should be present");
+        let parent_idx = output
+            .find("export const AncestorSchema")
+            .expect("AncestorSchema should be present");
+        let child_idx = output
+            .find("export const ZetaChildSchema")
+            .expect("ZetaChildSchema should be present");
         assert!(
-            body_idx < star_idx,
-            "BodySchema should be declared before StarSystemSchema even when added later"
+            child_idx < parent_idx,
+            "ZetaChildSchema should be declared before AncestorSchema even when added later"
         );
-        assert!(output.contains("bodies: z.array(BodySchema)"));
+        assert!(output.contains("children: z.array(ZetaChildSchema)"));
     }
 
     #[derive(ZodSchema)]
     #[allow(dead_code)]
-    struct AlphaSchema {
+    struct SchemaFoo {
         value: String,
     }
 
     #[derive(ZodSchema)]
     #[allow(dead_code)]
-    struct BetaSchema {
+    struct SchemaBar {
         flag: bool,
     }
 
     #[derive(ZodSchema)]
     #[allow(dead_code)]
-    struct GammaSchema {
+    struct SchemaBaz {
         data: i32,
     }
 
     #[test]
     fn test_generator_preserves_insertion_order_for_independent_schemas() {
         let mut gen = ZodGenerator::new();
-        gen.add_schema::<AlphaSchema>("Alpha");
-        gen.add_schema::<BetaSchema>("Beta");
-        gen.add_schema::<GammaSchema>("Gamma");
+        gen.add_schema::<SchemaBaz>("SchemaBaz");
+        gen.add_schema::<SchemaFoo>("SchemaFoo");
+        gen.add_schema::<SchemaBar>("SchemaBar");
 
         let output = gen.generate();
-        let alpha_idx = output.find("export const AlphaSchema").unwrap();
-        let beta_idx = output.find("export const BetaSchema").unwrap();
-        let gamma_idx = output.find("export const GammaSchema").unwrap();
+        let baz_idx = output.find("export const SchemaBazSchema").unwrap();
+        let foo_idx = output.find("export const SchemaFooSchema").unwrap();
+        let bar_idx = output.find("export const SchemaBarSchema").unwrap();
 
-        assert!(alpha_idx < beta_idx);
-        assert!(beta_idx < gamma_idx);
+        assert!(
+            baz_idx < foo_idx,
+            "SchemaBaz should appear before SchemaFoo"
+        );
+        assert!(
+            foo_idx < bar_idx,
+            "SchemaFoo should appear before SchemaBar"
+        );
     }
 }
