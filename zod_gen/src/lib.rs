@@ -802,7 +802,7 @@ mod tests {
         gen.add_schema::<DeepNestedParent>("DeepNestedParent");
 
         let output = gen.generate();
-        assert!(output.contains("child_matrix: z.array(z.array(NestedChildSchema)).nullable()"));
+        assert!(output.contains("childMatrix: z.array(z.array(NestedChildSchema)).nullable()"));
         let child_idx = output
             .find("export const NestedChildSchema")
             .expect("NestedChildSchema should be present");
@@ -941,7 +941,7 @@ mod tests {
         gen.add_schema::<DomainStarSystem>("DomainStarSystem");
 
         let output = gen.generate();
-        assert!(output.contains("landing_pads: DomainLandingPadsSchema.nullable()"));
+        assert!(output.contains("landingPads: DomainLandingPadsSchema.nullable()"));
         assert!(output.contains("market: DomainMarketSchema.nullable()"));
         assert!(output.contains("stations: z.array(DomainStationSchema)"));
         assert!(output.contains("bodies: z.array(DomainBodySchema)"));
@@ -1270,7 +1270,7 @@ mod tests {
             station_refs >= 2,
             "expected Body and StarSystem to reuse StationSchema"
         );
-        assert!(output.contains("landing_pads: LandingPadsSchema.nullable()"));
+        assert!(output.contains("landingPads: LandingPadsSchema.nullable()"));
         assert!(output.contains("market: MarketSchema.nullable()"));
         assert!(output.contains("shipyard: ShipyardSchema.nullable()"));
         assert!(output.contains("outfitting: OutfittingSchema.nullable()"));
