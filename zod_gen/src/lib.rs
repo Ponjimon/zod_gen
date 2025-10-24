@@ -593,6 +593,7 @@ mod tests {
     use super::*;
     use crate as zod_gen;
     use serde::{Deserialize, Serialize};
+    use serde_json::Value;
     use zod_gen_derive::ZodSchema;
 
     #[test]
@@ -930,6 +931,336 @@ mod tests {
         assert!(output.contains("market: DomainMarketSchema.nullable()"));
         assert!(output.contains("stations: z.array(DomainStationSchema)"));
         assert!(output.contains("bodies: z.array(DomainBodySchema)"));
+    }
+
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ZodSchema, Default)]
+    #[allow(dead_code)]
+    #[serde(default, rename_all = "camelCase")]
+    struct LargeBelt {
+        name: String,
+        #[serde(rename = "type")]
+        belt_type: String,
+        mass: f64,
+        inner_radius: f64,
+        outer_radius: f64,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ZodSchema, Default)]
+    #[allow(dead_code)]
+    #[serde(default, rename_all = "camelCase")]
+    struct LargeCoords {
+        x: f64,
+        y: f64,
+        z: f64,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ZodSchema, Default)]
+    #[allow(dead_code)]
+    #[serde(default, rename_all = "camelCase")]
+    struct LargeControllingFaction {
+        name: String,
+        government: Option<String>,
+        allegiance: Option<String>,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ZodSchema, Default)]
+    #[allow(dead_code)]
+    #[serde(default, rename_all = "camelCase")]
+    struct LargeFaction {
+        name: String,
+        allegiance: String,
+        government: String,
+        influence: f64,
+        state: String,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ZodSchema, Default)]
+    #[allow(dead_code)]
+    #[serde(default, rename_all = "camelCase")]
+    struct LargeLandingPads {
+        large: i32,
+        medium: i32,
+        small: i32,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ZodSchema, Default)]
+    #[allow(dead_code)]
+    #[serde(default, rename_all = "camelCase")]
+    struct LargeCommodity {
+        name: String,
+        symbol: String,
+        category: String,
+        commodity_id: i32,
+        demand: i32,
+        supply: i32,
+        buy_price: i32,
+        sell_price: i32,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ZodSchema, Default)]
+    #[allow(dead_code)]
+    #[serde(default, rename_all = "camelCase")]
+    struct LargeMarket {
+        #[serde(default)]
+        commodities: Vec<LargeCommodity>,
+        #[serde(default)]
+        prohibited_commodities: Vec<String>,
+        update_time: String,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ZodSchema, Default)]
+    #[allow(dead_code)]
+    #[serde(default, rename_all = "camelCase")]
+    struct LargeModule {
+        name: String,
+        symbol: String,
+        module_id: i32,
+        #[serde(rename = "class")]
+        class_grade: i32,
+        rating: String,
+        category: String,
+        ship: Option<String>,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ZodSchema, Default)]
+    #[allow(dead_code)]
+    #[serde(default, rename_all = "camelCase")]
+    struct LargeOutfitting {
+        #[serde(default)]
+        modules: Vec<LargeModule>,
+        update_time: String,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ZodSchema, Default)]
+    #[allow(dead_code)]
+    #[serde(default, rename_all = "camelCase")]
+    struct LargeShip {
+        name: String,
+        symbol: String,
+        ship_id: i32,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ZodSchema, Default)]
+    #[allow(dead_code)]
+    #[serde(default, rename_all = "camelCase")]
+    struct LargeShipyard {
+        #[serde(default)]
+        ships: Vec<LargeShip>,
+        update_time: String,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ZodSchema, Default)]
+    #[allow(dead_code)]
+    #[serde(default)]
+    struct LargeSignalsInternal {
+        #[serde(rename = "$SAA_SignalType_Human;")]
+        saa_signal_type_human: i32,
+        #[serde(rename = "$SAA_SignalType_Other;")]
+        saa_signal_type_other: Option<i32>,
+        #[serde(rename = "$SAA_SignalType_Geological;")]
+        saa_signal_type_geological: Option<i32>,
+        #[serde(rename = "SAA_SignalType_Biological;")]
+        saa_signal_type_biological: Option<i32>,
+        opal: i32,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ZodSchema, Default)]
+    #[allow(dead_code)]
+    #[serde(default, rename_all = "camelCase")]
+    struct LargeSignals {
+        #[serde(default, rename = "signals")]
+        signals_internal: LargeSignalsInternal,
+        #[serde(default)]
+        genuses: Vec<Value>,
+        update_time: Option<String>,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ZodSchema, Default)]
+    #[allow(dead_code)]
+    #[serde(default, rename_all = "camelCase")]
+    struct LargeRingSignals {
+        #[serde(default)]
+        signals: HashMap<String, Value>,
+        update_time: Option<String>,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ZodSchema, Default)]
+    #[allow(dead_code)]
+    #[serde(default, rename_all = "camelCase")]
+    struct LargeRing {
+        name: String,
+        #[serde(rename = "type")]
+        ring_type: String,
+        mass: f64,
+        inner_radius: f64,
+        outer_radius: f64,
+        #[serde(rename = "id64", alias = "id")]
+        id: i64,
+        signals: Option<LargeRingSignals>,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ZodSchema, Default)]
+    #[allow(dead_code)]
+    #[serde(default, rename_all = "camelCase")]
+    struct LargeSolidComposition {
+        ice: f64,
+        metal: f64,
+        rock: f64,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ZodSchema, Default)]
+    #[allow(dead_code)]
+    #[serde(default, rename_all = "camelCase")]
+    struct LargeStation {
+        name: String,
+        id: i64,
+        update_time: String,
+        controlling_faction: Option<String>,
+        controlling_faction_state: Option<String>,
+        distance_to_arrival: f64,
+        primary_economy: Option<String>,
+        #[serde(default)]
+        economies: HashMap<String, f64>,
+        allegiance: Option<String>,
+        government: Option<String>,
+        #[serde(default)]
+        services: Vec<String>,
+        #[serde(rename = "type")]
+        station_type: Option<String>,
+        state: Option<String>,
+        latitude: f64,
+        longitude: f64,
+        landing_pads: Option<LargeLandingPads>,
+        market: Option<LargeMarket>,
+        shipyard: Option<LargeShipyard>,
+        outfitting: Option<LargeOutfitting>,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ZodSchema, Default)]
+    #[allow(dead_code)]
+    #[serde(default, rename_all = "camelCase")]
+    struct LargeBody {
+        #[serde(rename = "id64", alias = "id")]
+        id: i64,
+        body_id: i32,
+        name: Option<String>,
+        #[serde(rename = "type")]
+        body_type: Option<String>,
+        sub_type: Option<String>,
+        distance_to_arrival: f64,
+        main_star: bool,
+        age: i32,
+        spectral_class: Option<String>,
+        luminosity: Option<String>,
+        absolute_magnitude: f64,
+        solar_masses: f64,
+        solar_radius: f64,
+        surface_temperature: f64,
+        rotational_period: f64,
+        axial_tilt: f64,
+        #[serde(default)]
+        belts: Vec<LargeBelt>,
+        #[serde(default)]
+        timestamps: HashMap<String, String>,
+        #[serde(default)]
+        stations: Vec<LargeStation>,
+        update_time: String,
+        is_landable: bool,
+        gravity: f64,
+        earth_masses: f64,
+        radius: f64,
+        surface_pressure: f64,
+        atmosphere_type: Option<String>,
+        solid_composition: Option<LargeSolidComposition>,
+        terraforming_state: Option<String>,
+        materials: Option<HashMap<String, f64>>,
+        signals: Option<LargeSignals>,
+        rotational_period_tidally_locked: Option<bool>,
+        #[serde(default)]
+        parents: Vec<HashMap<String, i64>>,
+        orbital_period: f64,
+        semi_major_axis: f64,
+        orbital_eccentricity: f64,
+        orbital_inclination: f64,
+        arg_of_periapsis: f64,
+        mean_anomaly: f64,
+        ascending_node: f64,
+        volcanism_type: Option<String>,
+        #[serde(default)]
+        atmosphere_composition: HashMap<String, f64>,
+        reserve_level: Option<String>,
+        #[serde(default)]
+        rings: Vec<LargeRing>,
+    }
+
+    #[derive(ZodSchema, Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+    #[allow(dead_code)]
+    #[serde(default, rename_all = "camelCase")]
+    struct LargeStarSystem {
+        #[serde(rename = "id64", alias = "id")]
+        id: i64,
+        name: String,
+        coords: LargeCoords,
+        allegiance: Option<String>,
+        government: Option<String>,
+        primary_economy: Option<String>,
+        secondary_economy: Option<String>,
+        security: Option<String>,
+        population: i64,
+        body_count: i32,
+        controlling_faction: Option<LargeControllingFaction>,
+        #[serde(default)]
+        factions: Vec<LargeFaction>,
+        controlling_power: Option<String>,
+        power_state: Option<String>,
+        power_state_control_progress: f64,
+        power_state_reinforcement: i32,
+        power_state_undermining: i32,
+        #[serde(default)]
+        powers: Vec<String>,
+        #[serde(default)]
+        timestamps: HashMap<String, String>,
+        date: Option<String>,
+        #[serde(default)]
+        bodies: Vec<LargeBody>,
+        #[serde(default)]
+        stations: Vec<LargeStation>,
+    }
+
+    #[test]
+    fn test_generator_handles_large_realistic_structure() {
+        let mut gen = ZodGenerator::new();
+        gen.add_schema::<LargeLandingPads>("LandingPads");
+        gen.add_schema::<LargeCommodity>("Commodity");
+        gen.add_schema::<LargeMarket>("Market");
+        gen.add_schema::<LargeModule>("Module");
+        gen.add_schema::<LargeOutfitting>("Outfitting");
+        gen.add_schema::<LargeShip>("Ship");
+        gen.add_schema::<LargeShipyard>("Shipyard");
+        gen.add_schema::<LargeSignalsInternal>("SignalsInternal");
+        gen.add_schema::<LargeSignals>("Signals");
+        gen.add_schema::<LargeRingSignals>("RingSignals");
+        gen.add_schema::<LargeRing>("Ring");
+        gen.add_schema::<LargeSolidComposition>("SolidComposition");
+        gen.add_schema::<LargeBelt>("Belt");
+        gen.add_schema::<LargeStation>("Station");
+        gen.add_schema::<LargeBody>("Body");
+        gen.add_schema::<LargeCoords>("Coords");
+        gen.add_schema::<LargeControllingFaction>("ControllingFaction");
+        gen.add_schema::<LargeFaction>("Faction");
+        gen.add_schema::<LargeStarSystem>("StarSystem");
+
+        let output = gen.generate();
+    let station_refs = output.matches("stations: z.array(StationSchema)").count();
+        assert!(
+            station_refs >= 2,
+            "expected Body and StarSystem to reuse StationSchema"
+        );
+        assert!(output.contains("landing_pads: LandingPadsSchema.nullable()"));
+        assert!(output.contains("market: MarketSchema.nullable()"));
+        assert!(output.contains("shipyard: ShipyardSchema.nullable()"));
+        assert!(output.contains("outfitting: OutfittingSchema.nullable()"));
+        assert!(output.contains("bodies: z.array(BodySchema)"));
     }
 
     #[test]
