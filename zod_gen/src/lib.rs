@@ -88,7 +88,7 @@
 
 use std::{
     cmp::Reverse,
-    collections::{BinaryHeap, HashMap},
+    collections::{BinaryHeap, HashMap, HashSet},
     fmt::Write,
 };
 
@@ -407,29 +407,43 @@ impl ZodGenerator {
         for (name, schema) in entries.into_iter() {
             let mut updated = schema;
             let mut deps = Vec::new();
+            let mut seen_deps: HashSet<String> = HashSet::new();
 
-            for (dep_name, dep_schema) in &originals {
-                if dep_name == &name {
-                    continue;
+            loop {
+                let mut iteration_changed = false;
+
+                for (dep_name, dep_schema) in &originals {
+                    if dep_name == &name {
+                        continue;
+                    }
+                    if schema_occurrences
+                        .get(dep_schema.as_str())
+                        .copied()
+                        .unwrap_or(0)
+                        > 1
+                    {
+                        continue;
+                    }
+                    let candidate_schema = processed_map
+                        .get(dep_name)
+                        .map(|value| value.as_str())
+                        .unwrap_or(dep_schema.as_str());
+
+                    let current = std::mem::take(&mut updated);
+                    let (new_schema, replaced) =
+                        replace_schema_refs(current, candidate_schema, dep_name);
+                    if replaced {
+                        if seen_deps.insert(dep_name.clone()) {
+                            deps.push(dep_name.clone());
+                        }
+                        iteration_changed = true;
+                    }
+                    updated = new_schema;
                 }
-                if schema_occurrences
-                    .get(dep_schema.as_str())
-                    .copied()
-                    .unwrap_or(0)
-                    > 1
-                {
-                    continue;
+
+                if !iteration_changed {
+                    break;
                 }
-                let candidate_schema = processed_map
-                    .get(dep_name)
-                    .map(|value| value.as_str())
-                    .unwrap_or(dep_schema.as_str());
-                let (new_schema, replaced) =
-                    replace_schema_refs(updated, candidate_schema, dep_name);
-                if replaced {
-                    deps.push(dep_name.clone());
-                }
-                updated = new_schema;
             }
 
             dependency_map.insert(name.clone(), deps);
@@ -1251,7 +1265,7 @@ mod tests {
         gen.add_schema::<LargeStarSystem>("StarSystem");
 
         let output = gen.generate();
-    let station_refs = output.matches("stations: z.array(StationSchema)").count();
+        let station_refs = output.matches("stations: z.array(StationSchema)").count();
         assert!(
             station_refs >= 2,
             "expected Body and StarSystem to reuse StationSchema"
